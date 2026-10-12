@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Régua de tela em centímetros.
+"""On-screen ruler in centimeters.
 
-Fica por cima, no centro ao abrir. Arraste o corpo para mover e a ponta
-azul para girar. A escala segue o tamanho físico do monitor.
+Stays above other windows and opens centered. Drag the body to move it
+and the blue tip to rotate it. The scale follows the monitor's physical size.
 
     python -m pip install -r requirements.txt
     python regua.py
@@ -200,7 +200,7 @@ class Ruler(QWidget):
         )
 
     def _origin_widget(self) -> QPointF:
-        """Canto superior esquerdo da régua, em coordenadas do widget."""
+        """Top-left corner of the ruler, in widget coordinates."""
         origin = self.mapToGlobal(QPoint(0, 0))
         return QPointF(self.anchor.x() - origin.x(), self.anchor.y() - origin.y())
 
@@ -279,8 +279,8 @@ class Ruler(QWidget):
         self._present()
 
     def _present(self) -> None:
-        # A máscara recorta o paint. Sem tirá-la, o pedaço antigo da régua
-        # fica no buffer e o Wayland continua mostrando.
+        # The mask clips painting. Clearing it first lets the full frame
+        # replace the previous ruler; otherwise Wayland keeps the old pixels.
         if self._in_present or not self.isVisible():
             return
         self._in_present = True
