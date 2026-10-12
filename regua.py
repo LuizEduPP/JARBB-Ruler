@@ -334,7 +334,6 @@ class Ruler(QWidget):
         else:
             return
         self.clearMask()
-        self.grabMouse()
 
     def mouseMoveEvent(self, event) -> None:
         if self._drag == "move":
@@ -360,7 +359,6 @@ class Ruler(QWidget):
     def mouseReleaseEvent(self, event) -> None:
         if event.button() != Qt.MouseButton.LeftButton or not self._drag:
             return
-        self.releaseMouse()
         self._drag = None
         self._hint_timer.start(900)
         self._redraw()
@@ -538,7 +536,8 @@ def main() -> int:
     wake = QTimer()
     wake.start(200)
     wake.timeout.connect(lambda: None)
-    Ruler().show()
+    window = Ruler()
+    window.show()
     return app.exec()
 
 
