@@ -49,7 +49,7 @@ Python 3, with pip.
 
 ```bash
 python -m pip install -r requirements.txt
-python regua.py
+python main.py
 ```
 
 Position, angle, length, and language are saved for the next time.

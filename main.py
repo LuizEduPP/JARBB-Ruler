@@ -7,7 +7,7 @@ The overlay uses the screen geometry on Windows, macOS, and X11. Wayland
 ignores that request, so there the window is fullscreen instead.
 
     python -m pip install -r requirements.txt
-    python regua.py
+    python main.py
 """
 
 from __future__ import annotations
@@ -666,8 +666,8 @@ def main() -> int:
     fmt.setAlphaBufferSize(8)
     QSurfaceFormat.setDefaultFormat(fmt)
     app = QApplication(sys.argv)
-    app.setOrganizationName("regua")
-    app.setApplicationName("regua")
+    app.setOrganizationName("JARBB")
+    app.setApplicationName("Ruler")
     window = Ruler()
     window.show()
     return app.exec()
