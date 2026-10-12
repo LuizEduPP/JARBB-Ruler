@@ -42,6 +42,7 @@ GROW_STEP_CM = 2.0
 MIN_CM = 3.0
 MAX_CM = 200.0
 STATE_VERSION = 2
+LEMMA = "Just another ruler, but better."
 
 LANGS: dict[str, dict[str, str]] = {
     "pt": {
@@ -158,10 +159,12 @@ class Ruler(QWidget):
         return self._tr("scale").format(n=f"{self.user_scale * 100:.0f}")
 
     def _apply_lang(self) -> None:
-        self.setWindowTitle(self._tr("title"))
+        title = f"{self._tr('title')} — {LEMMA}"
+        self.setWindowTitle(title)
+        self.setToolTip(LEMMA)
         app = QApplication.instance()
         if app is not None:
-            app.setApplicationDisplayName(self._tr("title"))
+            app.setApplicationDisplayName(title)
 
     def px_per_cm(self) -> float:
         return self._px * self.user_scale
@@ -545,6 +548,8 @@ class Ruler(QWidget):
 
     def contextMenuEvent(self, event) -> None:
         menu = QMenu(self)
+        motto = menu.addAction(LEMMA)
+        motto.setEnabled(False)
         info = menu.addAction(f"{self._fmt_cm(self.length_cm)} · {math.degrees(self.angle) % 360:.0f}°")
         info.setEnabled(False)
         menu.addSeparator()
