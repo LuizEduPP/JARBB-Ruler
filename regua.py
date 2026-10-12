@@ -137,8 +137,6 @@ class Ruler(QWidget):
         self._ready = True
 
     def _window_flags(self) -> Qt.WindowType:
-        # Tool keeps the overlay on the current desktop. On Wayland a normal
-        # window is what can go fullscreen; Tool cannot.
         kind = Qt.WindowType.Window if self._wayland() else Qt.WindowType.Tool
         return kind | Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint
 
@@ -207,7 +205,6 @@ class Ruler(QWidget):
         )
 
     def _origin_widget(self) -> QPointF:
-        """Top-left corner of the ruler, in widget coordinates."""
         origin = self.mapToGlobal(QPoint(0, 0))
         return QPointF(self.anchor.x() - origin.x(), self.anchor.y() - origin.y())
 
@@ -293,8 +290,6 @@ class Ruler(QWidget):
         self._present()
 
     def _present(self) -> None:
-        # The mask clips painting. Clearing it first lets the full frame
-        # replace the previous ruler; otherwise Wayland keeps the old pixels.
         if self._in_present or not self.isVisible():
             return
         self._in_present = True
