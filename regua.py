@@ -4,10 +4,6 @@
 Fica por cima, no centro ao abrir. Arraste o corpo para mover e a ponta
 azul para girar. A escala segue o tamanho físico do monitor.
 
-No Wayland o compositor ignora a posição de uma janela pequena, então a
-régua é desenhada numa janela transparente em tela cheia e o clique só
-pega na régua.
-
     python -m pip install -r requirements.txt
     python regua.py
 """
@@ -17,7 +13,6 @@ from __future__ import annotations
 import json
 import math
 import os
-import signal
 import sys
 
 from PySide6.QtCore import QLocale, QPoint, QPointF, QRectF, QStandardPaths, Qt, QTimer
@@ -123,16 +118,13 @@ class Ruler(QWidget):
         self._hint = ""
         self.lang = _system_lang()
 
-        self.setWindowTitle(self._tr("title"))
         self.setWindowFlags(
             Qt.WindowType.Window
             | Qt.WindowType.FramelessWindowHint
             | Qt.WindowType.WindowStaysOnTopHint
-            | Qt.WindowType.NoDropShadowWindowHint
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
-        self.setAutoFillBackground(False)
         self.setMouseTracking(True)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
@@ -195,8 +187,8 @@ class Ruler(QWidget):
             px = (screen.logicalDotsPerInch() or 96.0) / 2.54
         self._px = px
 
-    def _center_anchor(self, screen=None) -> None:
-        screen = screen or QGuiApplication.primaryScreen()
+    def _center_anchor(self) -> None:
+        screen = QGuiApplication.primaryScreen()
         if screen is None:
             return
         self._update_dpi()
@@ -271,13 +263,11 @@ class Ruler(QWidget):
     def showEvent(self, event) -> None:
         super().showEvent(event)
         self._cover_screen()
-        self.raise_()
         self.activateWindow()
         self.setFocus()
         handle = self.windowHandle()
         if handle is not None:
             handle.screenChanged.connect(self._on_screen, Qt.ConnectionType.UniqueConnection)
-        QTimer.singleShot(0, self._present)
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
@@ -304,7 +294,6 @@ class Ruler(QWidget):
 
     def paintEvent(self, _event) -> None:
         painter = QPainter(self)
-        painter.setClipRegion(QRegion(self.rect()), Qt.ClipOperation.ReplaceClip)
         painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Source)
         painter.fillRect(self.rect(), QColor(0, 0, 0, 1))
         painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
@@ -444,7 +433,6 @@ class Ruler(QWidget):
             self._press_anchor = QPoint(self.anchor)
         else:
             return
-        self.clearMask()
 
     def mouseMoveEvent(self, event) -> None:
         if self._drag == "move":
@@ -570,9 +558,7 @@ class Ruler(QWidget):
             action.triggered.connect(lambda _checked=False, chosen=code: self._set_lang(chosen))
         menu.addSeparator()
         menu.addAction(self._tr("close"), self.close)
-        self.clearMask()
         menu.exec(event.globalPos())
-        self._apply_mask()
 
     def _set_angle(self, angle: float) -> None:
         self.angle = angle
@@ -662,17 +648,12 @@ class Ruler(QWidget):
 
 
 def main() -> int:
-    signal.signal(signal.SIGINT, lambda *_: QApplication.quit())
     fmt = QSurfaceFormat()
     fmt.setAlphaBufferSize(8)
     QSurfaceFormat.setDefaultFormat(fmt)
     app = QApplication(sys.argv)
     app.setOrganizationName("regua")
     app.setApplicationName("regua")
-    app.setApplicationDisplayName(LANGS[_system_lang()]["title"])
-    wake = QTimer()
-    wake.start(200)
-    wake.timeout.connect(lambda: None)
     window = Ruler()
     window.show()
     return app.exec()
