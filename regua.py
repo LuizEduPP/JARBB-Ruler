@@ -3,6 +3,8 @@
 
 Stays above other windows and opens centered. Drag the body to move it
 and the blue tip to rotate it. The scale follows the monitor's physical size.
+The overlay uses the screen geometry on Windows, macOS, and X11. Wayland
+ignores that request, so there the window is fullscreen instead.
 
     python -m pip install -r requirements.txt
     python regua.py
@@ -118,11 +120,7 @@ class Ruler(QWidget):
         self._hint = ""
         self.lang = _system_lang()
 
-        self.setWindowFlags(
-            Qt.WindowType.Window
-            | Qt.WindowType.FramelessWindowHint
-            | Qt.WindowType.WindowStaysOnTopHint
-        )
+        self.setWindowFlags(self._window_flags())
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
         self.setMouseTracking(True)
@@ -137,6 +135,15 @@ class Ruler(QWidget):
 
         self._load()
         self._ready = True
+
+    def _window_flags(self) -> Qt.WindowType:
+        # Tool keeps the overlay on the current desktop. On Wayland a normal
+        # window is what can go fullscreen; Tool cannot.
+        kind = Qt.WindowType.Window if self._wayland() else Qt.WindowType.Tool
+        return kind | Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint
+
+    def _wayland(self) -> bool:
+        return QGuiApplication.platformName() == "wayland"
 
     def _tr(self, key: str) -> str:
         return LANGS[self.lang][key]
@@ -257,8 +264,15 @@ class Ruler(QWidget):
         handle = self.windowHandle()
         if handle is not None and handle.screen() != screen:
             handle.setScreen(screen)
-        if not self.isFullScreen():
-            self.showFullScreen()
+        if self._wayland():
+            if not self.isFullScreen():
+                self.showFullScreen()
+            return
+        if self.isFullScreen():
+            self.showNormal()
+        geo = screen.geometry()
+        if self.geometry() != geo:
+            self.setGeometry(geo)
 
     def showEvent(self, event) -> None:
         super().showEvent(event)
