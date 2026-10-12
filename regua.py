@@ -29,6 +29,7 @@ from PySide6.QtGui import (
     QPainterPath,
     QPen,
     QRegion,
+    QSurfaceFormat,
     QTransform,
 )
 from PySide6.QtWidgets import QApplication, QMenu, QWidget
@@ -37,6 +38,9 @@ THICK = 56
 KNOB_R = 14
 CLOSE_R = 12
 CLOSE_X = -28
+GROW_R = 12
+GROW_X = -60
+GROW_STEP_CM = 2.0
 MIN_CM = 3.0
 MAX_CM = 200.0
 STATE_VERSION = 2
@@ -57,6 +61,7 @@ class Ruler(QWidget):
         self.anchor = QPoint(0, 0)
         self._px = 38.0
         self._drag: str | None = None
+        self._in_present = False
         self._press_global = QPointF()
         self._press_anchor = QPoint()
         self._ready = False
@@ -145,6 +150,8 @@ class Ruler(QWidget):
             return "knob"
         if math.hypot(lx - CLOSE_X, ly - THICK / 2) <= CLOSE_R + 6:
             return "close"
+        if math.hypot(lx - GROW_X, ly - THICK / 2) <= GROW_R + 6:
+            return "grow"
         if -8 <= lx <= length + 8 and -8 <= ly <= THICK + 8:
             return "body"
         return None
@@ -155,6 +162,7 @@ class Ruler(QWidget):
         path.addRoundedRect(QRectF(-8, -8, length + 16, THICK + 16), 8, 8)
         path.addEllipse(QPointF(length, THICK / 2), KNOB_R + 6, KNOB_R + 6)
         path.addEllipse(QPointF(CLOSE_X, THICK / 2), CLOSE_R + 6, CLOSE_R + 6)
+        path.addEllipse(QPointF(GROW_X, THICK / 2), GROW_R + 6, GROW_R + 6)
         origin = self._origin_widget()
         transform = QTransform()
         transform.translate(origin.x(), origin.y())
@@ -193,20 +201,37 @@ class Ruler(QWidget):
         handle = self.windowHandle()
         if handle is not None:
             handle.screenChanged.connect(self._on_screen, Qt.ConnectionType.UniqueConnection)
-        QTimer.singleShot(0, self._apply_mask)
+        QTimer.singleShot(0, self._present)
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
         if self._ready:
-            self._apply_mask()
+            self._present()
 
     def _on_screen(self, _screen) -> None:
         self._update_dpi()
-        self._apply_mask()
-        self.update()
+        self._present()
+
+    def _present(self) -> None:
+        # A máscara recorta o paint. Sem tirá-la, o pedaço antigo da régua
+        # fica no buffer e o Wayland continua mostrando.
+        if self._in_present or not self.isVisible():
+            return
+        self._in_present = True
+        try:
+            self.clearMask()
+            self.repaint(self.rect())
+        finally:
+            self._in_present = False
+        if self._drag is None and self._ready:
+            QTimer.singleShot(0, self._apply_mask)
 
     def paintEvent(self, _event) -> None:
         painter = QPainter(self)
+        painter.setClipRegion(QRegion(self.rect()), Qt.ClipOperation.ReplaceClip)
+        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Source)
+        painter.fillRect(self.rect(), QColor(0, 0, 0, 1))
+        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         origin = self._origin_widget()
         painter.translate(origin)
@@ -278,6 +303,14 @@ class Ruler(QWidget):
         painter.drawLine(QPointF(center.x() - 4, center.y() - 4), QPointF(center.x() + 4, center.y() + 4))
         painter.drawLine(QPointF(center.x() + 4, center.y() - 4), QPointF(center.x() - 4, center.y() + 4))
 
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(46, 160, 90))
+        grow = QPointF(GROW_X, THICK / 2)
+        painter.drawEllipse(grow, GROW_R, GROW_R)
+        painter.setPen(QPen(QColor(255, 255, 255), 2))
+        painter.drawLine(QPointF(grow.x() - 5, grow.y()), QPointF(grow.x() + 5, grow.y()))
+        painter.drawLine(QPointF(grow.x(), grow.y() - 5), QPointF(grow.x(), grow.y() + 5))
+
     def _paint_label(self, painter: QPainter, x: float, y: float, text: str, upright: bool) -> None:
         painter.save()
         painter.translate(x, y)
@@ -291,6 +324,7 @@ class Ruler(QWidget):
             "body": Qt.CursorShape.SizeAllCursor,
             "knob": Qt.CursorShape.CrossCursor,
             "close": Qt.CursorShape.PointingHandCursor,
+            "grow": Qt.CursorShape.PointingHandCursor,
         }
         self.setCursor(shapes.get(kind, Qt.CursorShape.ArrowCursor))
 
@@ -306,16 +340,14 @@ class Ruler(QWidget):
     def _flash(self, text: str) -> None:
         self._hint = text
         self._hint_timer.start(1200)
-        self.update()
 
     def _clear_hint(self) -> None:
         self._hint = ""
-        self.update()
+        self._present()
 
     def _redraw(self) -> None:
         self._update_dpi()
-        self._apply_mask()
-        self.update()
+        self._present()
         self._schedule_save()
 
     def mousePressEvent(self, event) -> None:
@@ -324,6 +356,9 @@ class Ruler(QWidget):
         kind = self._hit(*self._to_local(event.position()))
         if kind == "close":
             self.close()
+            return
+        if kind == "grow":
+            self._set_length(self.length_cm + GROW_STEP_CM)
             return
         if kind == "knob":
             self._drag = "rotate"
@@ -340,7 +375,7 @@ class Ruler(QWidget):
             delta = event.globalPosition() - self._press_global
             self.anchor = self._press_anchor + QPoint(round(delta.x()), round(delta.y()))
             self._cover_screen()
-            self.update()
+            self._present()
             return
         if self._drag == "rotate":
             point = event.globalPosition()
@@ -352,7 +387,7 @@ class Ruler(QWidget):
             self.angle = self._maybe_snap(angle, event.modifiers())
             degrees = math.degrees(self.angle) % 360
             self._hint = f"{degrees:.0f}° · {_fmt_cm(self.length_cm)}"
-            self.update()
+            self._present()
             return
         self._set_cursor_for(self._hit(*self._to_local(event.position())))
 
@@ -529,6 +564,9 @@ class Ruler(QWidget):
 
 def main() -> int:
     signal.signal(signal.SIGINT, lambda *_: QApplication.quit())
+    fmt = QSurfaceFormat()
+    fmt.setAlphaBufferSize(8)
+    QSurfaceFormat.setDefaultFormat(fmt)
     app = QApplication(sys.argv)
     app.setOrganizationName("regua")
     app.setApplicationName("regua")
