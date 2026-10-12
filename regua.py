@@ -20,8 +20,9 @@ import os
 import signal
 import sys
 
-from PySide6.QtCore import QPoint, QPointF, QRectF, QStandardPaths, Qt, QTimer
+from PySide6.QtCore import QLocale, QPoint, QPointF, QRectF, QStandardPaths, Qt, QTimer
 from PySide6.QtGui import (
+    QActionGroup,
     QColor,
     QFont,
     QGuiApplication,
@@ -45,11 +46,65 @@ MIN_CM = 3.0
 MAX_CM = 200.0
 STATE_VERSION = 2
 
+LANGS: dict[str, dict[str, str]] = {
+    "pt": {
+        "name": "Português",
+        "title": "Régua",
+        "hint": "Arraste para mover. A ponta azul gira.",
+        "scale": "escala {n}%",
+        "center": "centro",
+        "language": "Idioma",
+        "center_cmd": "Centralizar",
+        "horizontal": "Horizontal",
+        "vertical": "Vertical",
+        "rotate45": "Girar 45°",
+        "longer": "Mais longa",
+        "shorter": "Mais curta",
+        "reset_scale": "Resetar escala",
+        "close": "Fechar",
+    },
+    "en": {
+        "name": "English",
+        "title": "Ruler",
+        "hint": "Drag to move. The blue tip rotates.",
+        "scale": "scale {n}%",
+        "center": "center",
+        "language": "Language",
+        "center_cmd": "Center",
+        "horizontal": "Horizontal",
+        "vertical": "Vertical",
+        "rotate45": "Rotate 45°",
+        "longer": "Longer",
+        "shorter": "Shorter",
+        "reset_scale": "Reset scale",
+        "close": "Close",
+    },
+    "es": {
+        "name": "Español",
+        "title": "Regla",
+        "hint": "Arrastra para mover. La punta azul gira.",
+        "scale": "escala {n}%",
+        "center": "centro",
+        "language": "Idioma",
+        "center_cmd": "Centrar",
+        "horizontal": "Horizontal",
+        "vertical": "Vertical",
+        "rotate45": "Girar 45°",
+        "longer": "Más larga",
+        "shorter": "Más corta",
+        "reset_scale": "Restablecer escala",
+        "close": "Cerrar",
+    },
+}
 
-def _fmt_cm(value: float) -> str:
-    if abs(value - round(value)) < 0.05:
-        return f"{round(value)} cm"
-    return f"{value:.1f} cm".replace(".", ",")
+
+def _system_lang() -> str:
+    name = QLocale.system().name().lower()
+    if name.startswith("pt"):
+        return "pt"
+    if name.startswith("es"):
+        return "es"
+    return "en"
 
 
 class Ruler(QWidget):
@@ -66,8 +121,9 @@ class Ruler(QWidget):
         self._press_anchor = QPoint()
         self._ready = False
         self._hint = ""
+        self.lang = _system_lang()
 
-        self.setWindowTitle("Régua")
+        self.setWindowTitle(self._tr("title"))
         self.setWindowFlags(
             Qt.WindowType.Window
             | Qt.WindowType.FramelessWindowHint
@@ -89,6 +145,26 @@ class Ruler(QWidget):
 
         self._load()
         self._ready = True
+
+    def _tr(self, key: str) -> str:
+        return LANGS[self.lang][key]
+
+    def _fmt_cm(self, value: float) -> str:
+        if abs(value - round(value)) < 0.05:
+            return f"{round(value)} cm"
+        text = f"{value:.1f}"
+        if self.lang != "en":
+            text = text.replace(".", ",")
+        return f"{text} cm"
+
+    def _fmt_scale(self) -> str:
+        return self._tr("scale").format(n=f"{self.user_scale * 100:.0f}")
+
+    def _apply_lang(self) -> None:
+        self.setWindowTitle(self._tr("title"))
+        app = QApplication.instance()
+        if app is not None:
+            app.setApplicationDisplayName(self._tr("title"))
 
     def px_per_cm(self) -> float:
         return self._px * self.user_scale
@@ -386,7 +462,7 @@ class Ruler(QWidget):
                 self.length_cm = min(MAX_CM, max(MIN_CM, distance / self.px_per_cm()))
             self.angle = self._maybe_snap(angle, event.modifiers())
             degrees = math.degrees(self.angle) % 360
-            self._hint = f"{degrees:.0f}° · {_fmt_cm(self.length_cm)}"
+            self._hint = f"{degrees:.0f}° · {self._fmt_cm(self.length_cm)}"
             self._present()
             return
         self._set_cursor_for(self._hit(*self._to_local(event.position())))
@@ -413,10 +489,10 @@ class Ruler(QWidget):
         mods = event.modifiers()
         if mods & Qt.KeyboardModifier.ControlModifier:
             self.user_scale = min(2.0, max(0.5, self.user_scale * (1.02 ** steps)))
-            self._flash(f"escala {self.user_scale * 100:.0f}%")
+            self._flash(self._fmt_scale())
         elif mods & Qt.KeyboardModifier.ShiftModifier:
             self.length_cm = min(MAX_CM, max(MIN_CM, self.length_cm + 0.5 * steps))
-            self._flash(_fmt_cm(self.length_cm))
+            self._flash(self._fmt_cm(self.length_cm))
         else:
             fine = 0.2 if mods & Qt.KeyboardModifier.AltModifier else 1.0
             self.angle += math.radians(fine) * steps
@@ -443,7 +519,7 @@ class Ruler(QWidget):
             self.anchor += QPoint(0, step)
         elif key == Qt.Key.Key_C:
             self._center_anchor()
-            self._flash("centro")
+            self._flash(self._tr("center"))
         elif key == Qt.Key.Key_H:
             self.angle = 0.0
             self._flash("0°")
@@ -452,19 +528,19 @@ class Ruler(QWidget):
             self._flash("90°")
         elif key == Qt.Key.Key_BracketLeft:
             self.length_cm = max(MIN_CM, self.length_cm - 1)
-            self._flash(_fmt_cm(self.length_cm))
+            self._flash(self._fmt_cm(self.length_cm))
         elif key == Qt.Key.Key_BracketRight:
             self.length_cm = min(MAX_CM, self.length_cm + 1)
-            self._flash(_fmt_cm(self.length_cm))
+            self._flash(self._fmt_cm(self.length_cm))
         elif mods & Qt.KeyboardModifier.ControlModifier and key in (Qt.Key.Key_Plus, Qt.Key.Key_Equal):
             self.user_scale = min(2.0, self.user_scale * 1.02)
-            self._flash(f"escala {self.user_scale * 100:.0f}%")
+            self._flash(self._fmt_scale())
         elif mods & Qt.KeyboardModifier.ControlModifier and key == Qt.Key.Key_Minus:
             self.user_scale = max(0.5, self.user_scale / 1.02)
-            self._flash(f"escala {self.user_scale * 100:.0f}%")
+            self._flash(self._fmt_scale())
         elif mods & Qt.KeyboardModifier.ControlModifier and key == Qt.Key.Key_0:
             self.user_scale = 1.0
-            self._flash("escala 100%")
+            self._flash(self._fmt_scale())
         else:
             super().keyPressEvent(event)
             return
@@ -472,19 +548,28 @@ class Ruler(QWidget):
 
     def contextMenuEvent(self, event) -> None:
         menu = QMenu(self)
-        info = menu.addAction(f"{_fmt_cm(self.length_cm)} · {math.degrees(self.angle) % 360:.0f}°")
+        info = menu.addAction(f"{self._fmt_cm(self.length_cm)} · {math.degrees(self.angle) % 360:.0f}°")
         info.setEnabled(False)
         menu.addSeparator()
-        menu.addAction("Centralizar", self._center_and_save)
-        menu.addAction("Horizontal", lambda: self._set_angle(0.0))
-        menu.addAction("Vertical", lambda: self._set_angle(math.pi / 2))
-        menu.addAction("Girar 45°", lambda: self._set_angle(self.angle + math.pi / 4))
+        menu.addAction(self._tr("center_cmd"), self._center_and_save)
+        menu.addAction(self._tr("horizontal"), lambda: self._set_angle(0.0))
+        menu.addAction(self._tr("vertical"), lambda: self._set_angle(math.pi / 2))
+        menu.addAction(self._tr("rotate45"), lambda: self._set_angle(self.angle + math.pi / 4))
         menu.addSeparator()
-        menu.addAction("Mais longa", lambda: self._set_length(self.length_cm + 1))
-        menu.addAction("Mais curta", lambda: self._set_length(self.length_cm - 1))
-        menu.addAction("Resetar escala", self._reset_scale)
+        menu.addAction(self._tr("longer"), lambda: self._set_length(self.length_cm + 1))
+        menu.addAction(self._tr("shorter"), lambda: self._set_length(self.length_cm - 1))
+        menu.addAction(self._tr("reset_scale"), self._reset_scale)
+        lang_menu = menu.addMenu(self._tr("language"))
+        group = QActionGroup(menu)
+        group.setExclusive(True)
+        for code in ("pt", "en", "es"):
+            action = lang_menu.addAction(LANGS[code]["name"])
+            action.setCheckable(True)
+            action.setChecked(code == self.lang)
+            group.addAction(action)
+            action.triggered.connect(lambda _checked=False, chosen=code: self._set_lang(chosen))
         menu.addSeparator()
-        menu.addAction("Fechar", self.close)
+        menu.addAction(self._tr("close"), self.close)
         self.clearMask()
         menu.exec(event.globalPos())
         self._apply_mask()
@@ -496,18 +581,26 @@ class Ruler(QWidget):
 
     def _set_length(self, length_cm: float) -> None:
         self.length_cm = min(MAX_CM, max(MIN_CM, length_cm))
-        self._flash(_fmt_cm(self.length_cm))
+        self._flash(self._fmt_cm(self.length_cm))
         self._redraw()
 
     def _reset_scale(self) -> None:
         self.user_scale = 1.0
-        self._flash("escala 100%")
+        self._flash(self._fmt_scale())
         self._redraw()
 
     def _center_and_save(self) -> None:
         self._center_anchor()
         self._cover_screen()
-        self._flash("centro")
+        self._flash(self._tr("center"))
+        self._redraw()
+
+    def _set_lang(self, code: str) -> None:
+        if code not in LANGS or code == self.lang:
+            return
+        self.lang = code
+        self._apply_lang()
+        self._flash(self._tr("name"))
         self._redraw()
 
     def _config_path(self) -> str:
@@ -523,9 +616,14 @@ class Ruler(QWidget):
                 data = json.load(handle)
         except (OSError, json.JSONDecodeError):
             self._center_anchor()
-            self._hint = "Arraste para mover. A ponta azul gira."
+            self._apply_lang()
+            self._hint = self._tr("hint")
             self._hint_timer.start(5000)
             return
+        saved = data.get("lang")
+        if saved in LANGS:
+            self.lang = saved
+        self._apply_lang()
         if int(data.get("v", 0)) != STATE_VERSION:
             self._center_anchor()
             return
@@ -550,6 +648,7 @@ class Ruler(QWidget):
             "angle": self.angle,
             "length_cm": self.length_cm,
             "scale": self.user_scale,
+            "lang": self.lang,
         }
         path = self._config_path()
         tmp = path + ".tmp"
@@ -570,7 +669,7 @@ def main() -> int:
     app = QApplication(sys.argv)
     app.setOrganizationName("regua")
     app.setApplicationName("regua")
-    app.setApplicationDisplayName("Régua")
+    app.setApplicationDisplayName(LANGS[_system_lang()]["title"])
     wake = QTimer()
     wake.start(200)
     wake.timeout.connect(lambda: None)
